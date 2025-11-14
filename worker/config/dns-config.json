@@ -1,0 +1,66 @@
+{
+  "project": "github-tunnel",
+  "version": "1.0.0",
+  "author": "hallochrrr",
+  "description": "Configuración para DNS Tunnel usando Cloudflare Workers",
+  
+  "worker": {
+    "name": "dns-tunnel",
+    "url": "https://dns-tunnel.hallochrrr.workers.dev",
+    "version": "1.0.0"
+  },
+  
+  "endpoints": {
+    "dns_query": "/dns-query",
+    "dns": "/dns",
+    "proxy": "/proxy",
+    "http": "/http",
+    "tunnel": "/tunnel",
+    "connect": "/connect",
+    "status": "/status",
+    "health": "/health"
+  },
+  
+  "settings": {
+    "timeout": 30000,
+    "retry_attempts": 3,
+    "compression": true,
+    "encryption": true,
+    "max_payload_size": 65536
+  },
+  
+  "protocols": {
+    "dns_tunneling": {
+      "enabled": true,
+      "method": "dns_over_https",
+      "port": 53,
+      "transport": "udp_tcp"
+    },
+    "http_proxy": {
+      "enabled": true,
+      "port": 8080,
+      "authentication": false
+    }
+  },
+  
+  "clients": {
+    "termux": {
+      "script": "scripts/termux-client.sh",
+      "requirements": ["curl", "git"],
+      "setup_timeout": 60
+    }
+  },
+  
+  "security": {
+    "cors_enabled": true,
+    "rate_limiting": false,
+    "allowed_origins": ["*"],
+    "blocked_countries": []
+  },
+  
+  "monitoring": {
+    "health_check_interval": 300,
+    "log_requests": true,
+    "debug_mode": false
+  }
+}
