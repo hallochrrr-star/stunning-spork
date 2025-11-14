@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+# scripts/advanced_client.py
+# Cliente avanzado DNS Tunnel para Termux
+
+import requests
+import json
+import time
+import base64
+import threading
+from urllib.parse import urlencode
+
+class DNSTunnelClient:
+    def __init__(self, config_file="config.json"):
+        self.config = self.load_config(config_file)
+        self.worker_url = self.config['worker_url']
+        self.session = requests.Session()
+        self.is_connected = False
+        self.tunnel_id = None
+        
+    def load_config(self, config_file):
+        """Cargar configuración desde archivo"""
+        try:
+            with open(config_file, 'r') as f:
+                return json.load(f)
+        except:
+            # Configuración por defecto
+            return {
+                "worker_url": "https://dns-tunnel.hallochrrr.workers.dev",
+                "endpoints": {
+                    "dns_query": "/dns-query",
+                    "tunnel": "/tunnel",
+                    "socks": "/socks",
+                    "status": "/status"
+                }
+            }
+    
+    def test_connection(self):
+        """Probar conexión con el servidor"""
+        print("🔍 Probando conexión con el servidor...")
+        try:
+            response = self.session.get(f"{self.worker_url}/status")
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Conexión exitosa: {data['message']}")
+                print(f"📊 Versión: {data.get('version', 'N/A')}")
+                return True
+            else:
+                print(f"❌ Error en la conexión: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Error de conexión: {e}")
+            return False
+    
+    def dns_query(self, domain="example.com", query_type="A"):
+        """Realizar consulta DNS simulada"""
+        print(f"🔍 Consultando DNS: {domain} ({query_type})")
+        try:
+            params = {'domain': domain, 'type': query_type}
+            response = self.session.get(
+                f"{self.worker_url}/dns-query", 
+                params=params
+            )
+            data = response.json()
+            print(f"📡 Respuesta DNS: {json.dumps(data, indent=2)}")
+            return data
+        except Exception as e:
+            print(f"❌ Error en consulta DNS: {e}")
+            return None
+    
+    def start_tunnel(self):
+        """Iniciar tunnel DNS"""
+        print("🚀 Iniciando tunnel DNS...")
+        try:
+            response = self.session.get(
+                f"{self.worker_url}/tunnel",
+                params={'action': 'connect'}
+            )
+            data = response.json()
+            
+            if data.get('status') == 'connected':
+                self.tunnel_id = data['tunnel_id']
+                self.is_connected = True
+                print(f"✅ Tunnel conectado: {self.tunnel_id}")
+                print(f"🌐 Servidor: {data['server']}")
+                return True
+            else:
+                print("❌ No se pudo conectar el tunnel")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error al conectar tunnel: {e}")
+            return False
+    
+    def check_socks(self):
+        """Verificar configuración SOCKS"""
+        print("🧦 Verificando proxy SOCKS...")
+        try:
+            response = self.session.get(f"{self.worker_url}/socks")
+            data = response.json()
+            print(f"✅ Proxy SOCKS {data['version']} listo en puerto {data['port']}")
+            return data
+        except Exception as e:
+            print(f"❌ Error en proxy SOCKS: {e}")
+            return None
+    
+    def send_data(self, data):
+        """Enviar datos a través del tunnel"""
+        if not self.is_connected:
+            print("❌ Tunnel no conectado")
+            return None
+            
+        try:
+            # Codificar datos en base64 para simular tunneling
+            encoded_data = base64.b64encode(data.encode()).decode()
+            
+            response = self.session.post(
+                f"{self.worker_url}/tunnel",
+                params={'action': 'data'},
+                json={'data': encoded_data}
+            )
+            return response.json()
+        except Exception as e:
+            print(f"❌ Error enviando datos: {e}")
+            return None
+
+def main():
+    client = DNSTunnelClient()
+    
+    while True:
+        print("\n" + "="*50)
+        print("🌐 DNS TUNNEL CLIENT - TERMUX")
+        print("="*50)
+        print("1. Probar conexión")
+        print("2. Consulta DNS")
+        print("3. Conectar Tunnel")
+        print("4. Verificar SOCKS")
+        print("5. Enviar datos de prueba")
+        print("6. Estado completo")
+        print("7. Salir")
+        print("="*50)
+        
+        choice = input("Selecciona opción: ").strip()
+        
+        if choice == '1':
+            client.test_connection()
+            
+        elif choice == '2':
+            domain = input("Ingresa dominio (default: example.com): ").strip()
+            if not domain:
+                domain = "example.com"
+            client.dns_query(domain)
+            
+        elif choice == '3':
+            client.start_tunnel()
+            
+        elif choice == '4':
+            client.check_socks()
+            
+        elif choice == '5':
+            if client.is_connected:
+                test_data = "Datos de prueba " + str(time.time())
+                result = client.send_data(test_data)
+                print(f"📤 Datos enviados: {result}")
+            else:
+                print("❌ Primero conecta el tunnel (opción 3)")
+                
+        elif choice == '6':
+            print(f"📊 Estado del cliente:")
+            print(f"   Conectado: {'✅' if client.is_connected else '❌'}")
+            print(f"   Tunnel ID: {client.tunnel_id}")
+            print(f"   Servidor: {client.worker_url}")
+            
+        elif choice == '7':
+            print("👋 ¡Hasta luego!")
+            break
+            
+        else:
+            print("❌ Opción inválida")
+        
+        input("\nPresiona Enter para continuar...")
+
+if __name__ == "__main__":
+    main()
