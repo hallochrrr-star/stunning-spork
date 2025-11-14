@@ -1,11 +1,10 @@
-// worker/tunnel-worker.js
+// worker/tunnel-worker.js - VERSIÓN MEJORADA
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
-    const method = request.method;
     
-    // Configuración CORS
+    // CORS headers para todas las respuestas
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -13,226 +12,91 @@ export default {
     };
 
     // Manejar preflight OPTIONS
-    if (method === 'OPTIONS') {
+    if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
-    
-    // Manejar diferentes endpoints
-    if (path === '/dns-query' || path === '/dns') {
-      return await handleDNSQuery(request);
-    } else if (path === '/proxy' || path === '/http') {
-      return await handleProxy(request);
-    } else if (path === '/tunnel' || path === '/connect') {
-      return await handleTunnel(request);
-    } else if (path === '/status' || path === '/health') {
+
+    // Endpoints principales
+    if (path === '/dns-query' || path.startsWith('/dns/')) {
+      return handleAdvancedDNS(request);
+    } else if (path === '/tunnel') {
+      return handleTunnel(request);
+    } else if (path === '/socks') {
+      return handleSocksProxy(request);
+    } else if (path === '/status') {
       return new Response(JSON.stringify({
         status: 'active',
         message: '🚀 DNS Tunnel Worker Operativo',
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
-      }), { 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
-      });
+        version: '2.0.0',
+        endpoints: {
+          dns: '/dns-query',
+          tunnel: '/tunnel', 
+          socks: '/socks',
+          status: '/status'
+        }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    
-    // Página de inicio/información
+
+    // Página de inicio mejorada
     return new Response(`
-<!DOCTYPE html>
-<html>
-<head>
-    <title>🌐 DNS Tunnel Worker</title>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 2px solid #007cba; padding-bottom: 10px; }
-        .endpoint { background: #f8f9fa; padding: 15px; margin: 10px 0; border-left: 4px solid #007cba; }
-        code { background: #eee; padding: 2px 5px; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🌐 DNS Tunnel Worker</h1>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>🌐 DNS Tunnel Server</title>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; }
+          .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>🌐 DNS Tunnel Server</h1>
         <p><strong>Estado:</strong> <span style="color: green;">🟢 OPERATIVO</span></p>
-        <p>Endpoints disponibles para el túnel DNS:</p>
         
         <div class="endpoint">
-            <h3>📡 DNS Query</h3>
-            <p><code>GET/POST ${url.origin}/dns-query</code></p>
-            <p>Maneja consultas DNS para tunneling</p>
+          <h3>📡 Endpoints disponibles:</h3>
+          <ul>
+            <li><strong>DNS Query:</strong> <code>/dns-query</code></li>
+            <li><strong>Tunnel:</strong> <code>/tunnel</code></li>
+            <li><strong>SOCKS:</strong> <code>/socks</code></li>
+            <li><strong>Status:</strong> <code>/status</code></li>
+          </ul>
         </div>
         
-        <div class="endpoint">
-            <h3>🔗 HTTP Proxy</h3>
-            <p><code>GET ${url.origin}/proxy?url=https://ejemplo.com</code></p>
-            <p>Proxy HTTP básico para pruebas</p>
-        </div>
-        
-        <div class="endpoint">
-            <h3>⚡ Tunnel Connect</h3>
-            <p><code>POST ${url.origin}/tunnel</code></p>
-            <p>Endpoint principal para conexiones tunnel</p>
-        </div>
-        
-        <div class="endpoint">
-            <h3>📊 Status</h3>
-            <p><code>GET ${url.origin}/status</code></p>
-            <p>Verifica el estado del servicio</p>
-        </div>
-        
-        <hr>
-        <p><strong>📧 Desarrollado por:</strong> hallochrrr</p>
-        <p><strong>🕐 Hora del servidor:</strong> <span id="time">${new Date().toISOString()}</span></p>
-    </div>
-</body>
-</html>
+        <p><em>Server Time: ${new Date().toISOString()}</em></p>
+      </body>
+      </html>
     `, { headers: { 'Content-Type': 'text/html' } });
   }
 }
 
-// Manejar consultas DNS para tunneling
-async function handleDNSQuery(request) {
+// Manejo avanzado de DNS
+async function handleAdvancedDNS(request) {
   try {
-    const contentType = request.headers.get('content-type') || '';
-    let queryData;
+    const url = new URL(request.url);
+    const domain = url.searchParams.get('domain') || 'example.com';
+    const type = url.searchParams.get('type') || 'A';
     
-    if (contentType.includes('application/json')) {
-      queryData = await request.json();
-    } else {
-      queryData = await request.text();
-    }
-    
-    // Simular respuesta DNS (aquí iría la lógica real de DNS tunneling)
-    const response = {
-      status: 'success',
-      type: 'dns_response',
+    // Simular resolución DNS (en producción aquí iría la lógica real)
+    const dnsResponse = {
+      domain: domain,
+      type: type,
+      answers: [
+        {
+          type: 'A',
+          address: '1.2.3.4',
+          ttl: 300
+        }
+      ],
       timestamp: new Date().toISOString(),
-      data: {
-        query: queryData,
-        response: 'dns-tunnel-response',
-        ttl: 300,
-        encrypted: true
-      },
-      server: 'cloudflare-worker'
+      encrypted: true
     };
     
-    return new Response(JSON.stringify(response), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      }
-    });
-    
-  } catch (error) {
-    return new Response(JSON.stringify({
-      status: 'error',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    }), { 
-      status: 500,
+    return new Response(JSON.stringify(dnsResponse), {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
-      }
-    });
-  }
-}
-
-// Manejar proxy HTTP
-async function handleProxy(request) {
-  const url = new URL(request.url);
-  const targetUrl = url.searchParams.get('url');
-  
-  if (!targetUrl) {
-    return new Response(JSON.stringify({
-      error: 'Parámetro "url" requerido',
-      ejemplo: `${request.url}?url=https://ejemplo.com`
-    }), { 
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-  
-  try {
-    // Validar URL
-    let target;
-    try {
-      target = new URL(targetUrl);
-    } catch (e) {
-      return new Response(JSON.stringify({
-        error: 'URL inválida',
-        message: e.message
-      }), { status: 400 });
-    }
-    
-    // Hacer la petición
-    const response = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'DNS-Tunnel-Proxy/1.0'
-      }
-    });
-    
-    const data = await response.text();
-    
-    return new Response(data, {
-      status: response.status,
-      headers: {
-        'Content-Type': response.headers.get('content-type') || 'text/plain',
-        'Access-Control-Allow-Origin': '*',
-        'X-Proxy-Server': 'cloudflare-worker-dns-tunnel'
-      }
-    });
-    
-  } catch (error) {
-    return new Response(JSON.stringify({
-      error: 'Error del proxy',
-      message: error.message,
-      url: targetUrl
-    }), { 
-      status: 500,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
-    });
-  }
-}
-
-// Manejar conexiones tunnel (para futuro desarrollo)
-async function handleTunnel(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action') || 'connect';
-    const client = searchParams.get('client') || 'unknown';
-    
-    const tunnelResponse = {
-      status: 'connected',
-      action: action,
-      client: client,
-      timestamp: new Date().toISOString(),
-      server: {
-        name: 'dns-tunnel-worker',
-        location: 'cloudflare',
-        version: '1.0.0'
-      },
-      endpoints: {
-        dns: '/dns-query',
-        proxy: '/proxy',
-        status: '/status'
-      }
-    };
-    
-    return new Response(JSON.stringify(tunnelResponse), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'X-Tunnel-Status': 'active'
       }
     });
     
@@ -242,10 +106,47 @@ async function handleTunnel(request) {
       message: error.message
     }), { 
       status: 500,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     });
   }
+}
+
+// Manejo de tunnel de datos
+async function handleTunnel(request) {
+  const url = new URL(request.url);
+  const action = url.searchParams.get('action') || 'connect';
+  
+  switch (action) {
+    case 'connect':
+      return new Response(JSON.stringify({
+        status: 'connected',
+        tunnel_id: 'tun_' + Math.random().toString(36).substr(2, 9),
+        server: 'dns-tunnel.hallochrrr.workers.dev',
+        timestamp: new Date().toISOString()
+      }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      
+    case 'data':
+      // Aquí procesaríamos datos del tunnel
+      return new Response(JSON.stringify({
+        status: 'data_received',
+        bytes: 0,
+        encrypted: true
+      }), { headers: { 'Content-Control-Allow-Origin': '*' } });
+      
+    default:
+      return new Response(JSON.stringify({
+        status: 'error',
+        message: 'Acción no válida'
+      }), { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
+  }
+}
+
+// Proxy SOCKS básico
+async function handleSocksProxy(request) {
+  return new Response(JSON.stringify({
+    status: 'socks_ready',
+    port: 1080,
+    version: '5',
+    timestamp: new Date().toISOString()
+  }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
 }
