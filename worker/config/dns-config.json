@@ -1,22 +1,23 @@
 {
-  "version": "2.0.0",
+  "version": "3.0.0",
   "worker_url": "https://dns-tunnel.hallochrrr.workers.dev",
   "endpoints": {
-    "dns_query": "/dns-query",
-    "tunnel": "/tunnel",
-    "socks": "/socks",
-    "status": "/status"
+    "dns_tunnel": "/dns-tunnel?action=connect",
+    "dns_query": "/dns-query?domain=example.com",
+    "tunnel_data": "/tunnel",
+    "socks_config": "/socks",
+    "status": "/status",
+    "http_proxy": "/proxy"
   },
-  "dns_settings": {
-    "timeout": 30000,
-    "retry_attempts": 3,
+  "protocols": {
+    "primary": "dns-over-https",
+    "fallback": "http-tunnel",
+    "encryption": "aes-256-gcm"
+  },
+  "client_settings": {
+    "timeout": 30,
+    "retry_attempts": 5,
     "compression": true,
-    "encryption": true,
     "chunk_size": 512
-  },
-  "tunnel_settings": {
-    "local_port": 1080,
-    "socks_version": 5,
-    "auto_reconnect": true
   }
 }
