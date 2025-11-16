@@ -1,102 +1,126 @@
-// worker/tunnel-worker.js - VERSIÓN ULTRALIGERA
+// worker/tunnel-worker.js - VERSIÓN ESTABLE PARA DEVTOOLS
 export default {
   async fetch(request, env, ctx) {
-    // 🔥 MÁXIMA VELOCIDAD - Respuesta inmediata
-    const startTime = Date.now();
-    
-    const url = new URL(request.url);
-    const path = url.pathname;
-    
-    // Headers predefinidos - SIN procesamiento
-    const dohHeaders = {
-      'Content-Type': 'application/dns-json',
+    // 🔧 HEADERS COMPATIBLES CON DEVTOOLS
+    const headers = {
+      'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'X-Response-Time': `${Date.now() - startTime}ms`
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'X-Content-Type-Options': 'nosniff'
     };
 
-    // OPTIONS - Respuesta instantánea
+    // 🎯 MANEJAR OPTIONS PARA CORS
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: dohHeaders });
+      return new Response(null, { headers });
     }
 
-    // 📡 ENDPOINTS ULTRARRÁPIDOS - SIN async/await complejos
-    if (path === '/dns-query') {
-      const name = url.searchParams.get('name') || 'tunnel.etecsa.tk';
-      const type = parseInt(url.searchParams.get('type')) || 16;
-      
-      const response = {
-        "Status": 0,
-        "TC": false,
-        "RD": true,
-        "RA": true,
-        "AD": false,
-        "CD": false,
-        "Question": [{ "name": name, "type": type }],
-        "Answer": [{
-          "name": name,
-          "type": type,
-          "TTL": 300,
-          "data": type === 1 ? "93.184.216.34" : `"DoH:${name.substring(0,20)}"`
-        }],
-        "timestamp": new Date().toISOString()
-      };
-      
-      return new Response(JSON.stringify(response), { headers: dohHeaders });
-    }
-    
-    if (path === '/tunnel') {
-      const action = url.searchParams.get('action') || 'ready';
-      
-      const response = {
-        "Status": 0,
-        "TC": false,
-        "RD": true,
-        "RA": true,
-        "AD": false,
-        "CD": false,
-        "Question": [],
-        "Answer": [{
-          "name": "tunnel.etecsa.tk",
-          "type": 16,
-          "TTL": 300,
-          "data": `"tunnel:${action}"`
-        }],
-        "timestamp": new Date().toISOString()
-      };
-      
-      return new Response(JSON.stringify(response), { headers: dohHeaders });
-    }
-    
-    if (path === '/status' || path === '/') {
-      const response = {
-        "Status": 0,
-        "TC": false,
-        "RD": true,
-        "RA": true,
-        "AD": false,
-        "CD": false,
-        "Question": [],
-        "Answer": [{
-          "name": "status.etecsa.tk",
-          "type": 16,
-          "TTL": 300,
-          "data": "\"🚀 ACTIVE - DoH Ready\""
-        }],
-        "server": "ultralight-worker",
-        "response_time": `${Date.now() - startTime}ms`,
-        "timestamp": new Date().toISOString()
-      };
-      
-      return new Response(JSON.stringify(response), { headers: dohHeaders });
-    }
+    try {
+      const url = new URL(request.url);
+      const path = url.pathname;
 
-    // Endpoint no encontrado - respuesta instantánea
-    const errorResponse = {
-      "Status": 3,
-      "Comment": "Endpoint not found",
-      "timestamp": new Date().toISOString()
-    };
-    
-    return new Response(JSON.stringify(errorResponse), { headers: dohHeaders });
+      // 📡 ENDPOINT PRINCIPAL - ESTABLE
+      if (path === '/dns-query') {
+        const name = url.searchParams.get('name') || 'tunnel.etecsa.tk';
+        const type = url.searchParams.get('type') || 'TXT';
+        
+        // Respuesta DoH estándar y estable
+        const dohResponse = {
+          "Status": 0,
+          "TC": false,
+          "RD": true,
+          "RA": true,
+          "AD": false,
+          "CD": false,
+          "Question": [
+            {
+              "name": name,
+              "type": type === 'A' ? 1 : 16
+            }
+          ],
+          "Answer": [
+            {
+              "name": name,
+              "type": type === 'A' ? 1 : 16,
+              "TTL": 300,
+              "data": type === 'A' ? "93.184.216.34" : `"DoH Tunnel: ${name}"`
+            }
+          ],
+          "timestamp": new Date().toISOString(),
+          "server": "dns-tunnel.etecsa.tk"
+        };
+
+        // 🔧 PEQUEÑA PAUSA PARA DEVTOOLS
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        return new Response(JSON.stringify(dohResponse), { headers });
+      }
+
+      // 🚇 ENDPOINT TUNNEL - ESTABLE
+      if (path === '/tunnel') {
+        const action = url.searchParams.get('action') || 'status';
+        
+        const tunnelResponse = {
+          "status": "active",
+          "action": action,
+          "tunnel_id": `tun_${Date.now()}`,
+          "protocol": "dns-over-https",
+          "timestamp": new Date().toISOString(),
+          "message": `Tunnel ${action} successful`
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return new Response(JSON.stringify(tunnelResponse), { headers });
+      }
+
+      // 📊 ENDPOINT STATUS - SIEMPRE FUNCIONAL
+      if (path === '/status' || path === '/') {
+        const statusResponse = {
+          "status": "active",
+          "message": "🚀 DNS Tunnel Server - Operational",
+          "version": "1.0.0",
+          "timestamp": new Date().toISOString(),
+          "endpoints": {
+            "dns_query": "/dns-query?name=example.com&type=TXT",
+            "tunnel": "/tunnel?action=connect",
+            "status": "/status"
+          }
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return new Response(JSON.stringify(statusResponse, null, 2), { headers });
+      }
+
+      // 🔍 ENDPOINT NO ENCONTRADO - RESPUESTA AMIGABLE
+      const notFoundResponse = {
+        "error": "Endpoint not found",
+        "available_endpoints": [
+          "/status",
+          "/dns-query?name=example.com&type=TXT", 
+          "/tunnel?action=connect"
+        ],
+        "timestamp": new Date().toISOString()
+      };
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return new Response(JSON.stringify(notFoundResponse), { 
+        status: 404,
+        headers 
+      });
+
+    } catch (error) {
+      // 🛑 MANEJO DE ERRORES ESTABLE
+      const errorResponse = {
+        "error": "Internal server error",
+        "message": error.message,
+        "timestamp": new Date().toISOString()
+      };
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return new Response(JSON.stringify(errorResponse), {
+        status: 500,
+        headers
+      });
+    }
   }
 }
