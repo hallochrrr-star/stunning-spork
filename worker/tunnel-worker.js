@@ -1,146 +1,102 @@
-// worker/tunnel-worker.js - VERSIÓN ESTABLE Y RÁPIDA
+// worker/tunnel-worker.js - VERSIÓN ULTRALIGERA
 export default {
   async fetch(request, env, ctx) {
+    // 🔥 MÁXIMA VELOCIDAD - Respuesta inmediata
+    const startTime = Date.now();
+    
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // Headers para DNS-over-HTTPS
+    // Headers predefinidos - SIN procesamiento
     const dohHeaders = {
       'Content-Type': 'application/dns-json',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'X-Response-Time': `${Date.now() - startTime}ms`
     };
 
-    // Manejo inmediato de OPTIONS
+    // OPTIONS - Respuesta instantánea
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: dohHeaders });
     }
 
-    try {
-      // 📡 ENDPOINT PRINCIPAL DoH - MÍNIMO Y RÁPIDO
-      if (path === '/dns-query') {
-        return handleSimpleDoH(request);
-      }
+    // 📡 ENDPOINTS ULTRARRÁPIDOS - SIN async/await complejos
+    if (path === '/dns-query') {
+      const name = url.searchParams.get('name') || 'tunnel.etecsa.tk';
+      const type = parseInt(url.searchParams.get('type')) || 16;
       
-      // 🚇 TUNNEL BÁSICO
-      if (path === '/tunnel') {
-        return handleSimpleTunnel(request);
-      }
+      const response = {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [{ "name": name, "type": type }],
+        "Answer": [{
+          "name": name,
+          "type": type,
+          "TTL": 300,
+          "data": type === 1 ? "93.184.216.34" : `"DoH:${name.substring(0,20)}"`
+        }],
+        "timestamp": new Date().toISOString()
+      };
       
-      // 📊 ESTADO SIMPLE
-      if (path === '/status' || path === '/') {
-        return new Response(JSON.stringify({
-          "Status": 0,
-          "TC": false,
-          "RD": true,
-          "RA": true,
-          "AD": false,
-          "CD": false,
-          "Question": [],
-          "Answer": [
-            {
-              "name": "dns-tunnel.etecsa.tk",
-              "type": 16,
-              "TTL": 300,
-              "data": "\"🚀 DNS Tunnel Active - DoH Ready\""
-            }
-          ],
-          "timestamp": new Date().toISOString(),
-          "server": "etecsa.tk"
-        }), { headers: dohHeaders });
-      }
-
-      // Endpoint no encontrado - respuesta inmediata
-      return new Response(JSON.stringify({
-        "Status": 3, // NXDOMAIN
-        "Comment": "Endpoint not found"
-      }), { headers: dohHeaders });
-
-    } catch (error) {
-      // Error controlado - respuesta inmediata
-      return new Response(JSON.stringify({
-        "Status": 2, // SERVFAIL
-        "Comment": error.message
-      }), { 
-        headers: dohHeaders 
-      });
+      return new Response(JSON.stringify(response), { headers: dohHeaders });
     }
+    
+    if (path === '/tunnel') {
+      const action = url.searchParams.get('action') || 'ready';
+      
+      const response = {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [],
+        "Answer": [{
+          "name": "tunnel.etecsa.tk",
+          "type": 16,
+          "TTL": 300,
+          "data": `"tunnel:${action}"`
+        }],
+        "timestamp": new Date().toISOString()
+      };
+      
+      return new Response(JSON.stringify(response), { headers: dohHeaders });
+    }
+    
+    if (path === '/status' || path === '/') {
+      const response = {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [],
+        "Answer": [{
+          "name": "status.etecsa.tk",
+          "type": 16,
+          "TTL": 300,
+          "data": "\"🚀 ACTIVE - DoH Ready\""
+        }],
+        "server": "ultralight-worker",
+        "response_time": `${Date.now() - startTime}ms`,
+        "timestamp": new Date().toISOString()
+      };
+      
+      return new Response(JSON.stringify(response), { headers: dohHeaders });
+    }
+
+    // Endpoint no encontrado - respuesta instantánea
+    const errorResponse = {
+      "Status": 3,
+      "Comment": "Endpoint not found",
+      "timestamp": new Date().toISOString()
+    };
+    
+    return new Response(JSON.stringify(errorResponse), { headers: dohHeaders });
   }
-}
-
-// 🔍 MANEJAR DoH DE FORMA SIMPLE Y RÁPIDA
-async function handleSimpleDoH(request) {
-  const url = new URL(request.url);
-  const name = url.searchParams.get('name') || 'tunnel.etecsa.tk';
-  const type = parseInt(url.searchParams.get('type')) || 16;
-  
-  // Respuesta DoH estándar - SIN procesamiento complejo
-  const response = {
-    "Status": 0,
-    "TC": false,
-    "RD": true, 
-    "RA": true,
-    "AD": false,
-    "CD": false,
-    "Question": [
-      {
-        "name": name,
-        "type": type
-      }
-    ],
-    "Answer": [
-      {
-        "name": name,
-        "type": type,
-        "TTL": 300,
-        "data": type === 1 ? "93.184.216.34" : `"DoH Tunnel: ${name}"`
-      }
-    ],
-    "timestamp": new Date().toISOString()
-  };
-  
-  return new Response(JSON.stringify(response), { 
-    headers: {
-      'Content-Type': 'application/dns-json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
-}
-
-// 🚇 TUNNEL SIMPLE - SIN LÓGICA COMPLEJA
-async function handleSimpleTunnel(request) {
-  const url = new URL(request.url);
-  const action = url.searchParams.get('action') || 'ready';
-  
-  // Respuesta inmediata sin procesamiento
-  const response = {
-    "Status": 0,
-    "TC": false,
-    "RD": true,
-    "RA": true,
-    "AD": false,
-    "CD": false,
-    "Question": [],
-    "Answer": [
-      {
-        "name": "tunnel.etecsa.tk",
-        "type": 16,
-        "TTL": 300,
-        "data": `"tunnel:${action}:success"`
-      }
-    ],
-    "tunnel_info": {
-      "status": "ready",
-      "protocol": "doh_simple"
-    },
-    "timestamp": new Date().toISOString()
-  };
-  
-  return new Response(JSON.stringify(response), {
-    headers: {
-      'Content-Type': 'application/dns-json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
 }
