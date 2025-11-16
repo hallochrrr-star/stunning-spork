@@ -1,23 +1,30 @@
 {
-  "version": "3.0.0",
-  "worker_url": "https://dns-tunnel.hallochrrr.workers.dev",
-  "endpoints": {
-    "dns_tunnel": "/dns-tunnel?action=connect",
-    "dns_query": "/dns-query?domain=example.com",
-    "tunnel_data": "/tunnel",
-    "socks_config": "/socks",
-    "status": "/status",
-    "http_proxy": "/proxy"
-  },
-  "protocols": {
-    "primary": "dns-over-https",
-    "fallback": "http-tunnel",
-    "encryption": "aes-256-gcm"
-  },
-  "client_settings": {
-    "timeout": 30,
-    "retry_attempts": 5,
+  "version": "5.0.0",
+  "domain": "etecsa.tk",
+  "worker_url": "https://dns-tunnel.etecsa.tk",
+  "protocol": "dns_over_https",
+  "dns_settings": {
+    "type": "TXT",
+    "max_chunk_size": 512,
+    "timeout": 30000,
+    "retry_attempts": 3,
     "compression": true,
-    "chunk_size": 512
+    "encryption": true
+  },
+  "endpoints": {
+    "dns_query": "/dns-query",
+    "dns_tunnel": "/dns-tunnel",
+    "socks": "/socks",
+    "status": "/status"
+  },
+  "tunnel_settings": {
+    "local_port": 1080,
+    "socks_version": 5,
+    "auto_reconnect": true
+  },
+  "evasion_settings": {
+    "dns_over_https": true,
+    "simulate_legitimate": true,
+    "use_txt_records": true
   }
 }
