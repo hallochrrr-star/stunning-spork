@@ -1,178 +1,155 @@
-#!/bin/bash
-# scripts/termux-client.sh
-# Cliente mejorado para Termux
+#!/usr/bin/env python3
+import requests
+import base64
+import json
+import time
 
-echo "🌐 Iniciando Cliente DNS Tunnel Avanzado..."
+class DNSRealTunnel:
+    def __init__(self):
+        self.config = self.load_config()
+        self.base_url = self.config['worker_url']
+        self.session = requests.Session()
+        self.tunnel_id = None
+        
+    def load_config(self):
+        try:
+            with open('../config/dns-config.json', 'r') as f:
+                return json.load(f)
+        except:
+            return {
+                "worker_url": "https://dns-tunnel.etecsa.tk",
+                "domain": "etecsa.tk"
+            }
+    
+    def test_dns_server(self):
+        print("🔍 Probando servidor DNS real...")
+        try:
+            response = self.session.get(
+                f"{self.base_url}/status",
+                timeout=15
+            )
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Servidor DNS operativo: {data['message']}")
+                print(f"📍 Dominio: {data.get('server', 'N/A')}")
+                return True
+        except Exception as e:
+            print(f"❌ Error servidor DNS: {e}")
+        return False
+    
+    def dns_query_legitimate(self, domain="whatsapp.com", qtype="TXT"):
+        print(f"🔍 Consulta DNS legítima: {domain} ({qtype})")
+        try:
+            response = self.session.get(
+                f"{self.base_url}/dns-query?name={domain}&type={qtype}",
+                headers={'Accept': 'application/dns-json'},
+                timeout=15
+            )
+            data = response.json()
+            print(f"✅ Respuesta DNS recibida")
+            print(f"   Status: {data.get('Status')}")
+            print(f"   Respuestas: {len(data.get('Answer', []))}")
+            return data
+        except Exception as e:
+            print(f"❌ Error consulta DNS: {e}")
+            return None
+    
+    def connect_dns_tunnel(self):
+        print("🚀 Conectando tunnel DNS...")
+        try:
+            response = self.session.get(
+                f"{self.base_url}/dns-tunnel?action=connect",
+                timeout=20
+            )
+            data = response.json()
+            
+            if data.get('status') == 'tunnel_established':
+                self.tunnel_id = data['tunnel_id']
+                print(f"✅ Tunnel DNS establecido: {self.tunnel_id}")
+                print(f"🔧 Protocolo: {data['protocol']}")
+                print(f"📦 Chunk size: {data['max_chunk_size']} bytes")
+                return True
+        except Exception as e:
+            print(f"❌ Error conectando tunnel: {e}")
+        return False
+    
+    def send_data_via_dns(self, data="Test data for DNS tunnel"):
+        print("📤 Enviando datos via DNS tunneling...")
+        try:
+            encoded = base64.b64encode(data.encode()).decode()
+            
+            response = self.session.get(
+                f"{self.base_url}/dns-query?name=tunnel.etecsa.tk&type=TXT&data={encoded}",
+                headers={'Accept': 'application/dns-json'},
+                timeout=15
+            )
+            
+            dns_data = response.json()
+            print(f"✅ Datos enviados via DNS")
+            print(f"   Bytes: {len(encoded)}")
+            if dns_data.get('Answer'):
+                print(f"   Respuesta: {dns_data['Answer'][0].get('data', 'OK')}")
+            return True
+        except Exception as e:
+            print(f"❌ Error enviando datos: {e}")
+            return False
+    
+    def get_socks_config(self):
+        print("🧦 Obteniendo configuración SOCKS sobre DNS...")
+        try:
+            response = self.session.get(f"{self.base_url}/socks", timeout=15)
+            data = response.json()
+            
+            print(f"✅ SOCKS {data['version']} listo")
+            print(f"   Puerto local: {data['local_port']}")
+            print("   Instrucciones:")
+            for step in data.get('setup_instructions', []):
+                print(f"     {step}")
+            return data
+        except Exception as e:
+            print(f"❌ Error SOCKS: {e}")
+            return None
+    
+    def full_tunnel_test(self):
+        print("🌐 PRUEBA COMPLETA DNS TUNNELING")
+        print("=" * 50)
+        
+        steps = [
+            ("Servidor DNS", self.test_dns_server),
+            ("Consulta DNS", lambda: self.dns_query_legitimate()),
+            ("Tunnel DNS", self.connect_dns_tunnel),
+            ("Datos via DNS", self.send_data_via_dns),
+            ("SOCKS Config", self.get_socks_config)
+        ]
+        
+        for step_name, step_func in steps:
+            print(f"\n🎯 {step_name}...")
+            if not step_func():
+                print(f"❌ Falló en: {step_name}")
+                return False
+            time.sleep(1)
+        
+        print("\n🎉 ¡DNS TUNNELING OPERATIVO!")
+        return True
 
-# Configuración
-CONFIG_DIR="$HOME/github-tunnel"
-SCRIPT_DIR="$CONFIG_DIR/scripts"
-CONFIG_FILE="$CONFIG_DIR/config/dns-config.json"
+def main():
+    client = DNSRealTunnel()
+    
+    print("🌐 DNS REAL TUNNEL CLIENT - etecsa.tk")
+    print("🔧 Emulación DNS legítima para evasión")
+    print("=" * 60)
+    
+    if client.full_tunnel_test():
+        print("\n🚀 PLAN ORIGINAL ACTIVADO:")
+        print("   • Servidor DNS real ✓")
+        print("   • Tunnel establecido ✓")
+        print("   • SOCKS sobre DNS ✓")
+        print("   • Próximo: SSH sobre DNS")
+    else:
+        print("\n⚠️  Verificar configuración:")
+        print("   • Dominio etecsa.tk en Cloudflare")
+        print("   • Worker configurado correctamente")
+        print("   • Propagación DNS completa")
 
-# Colores para output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Función para log con colores
-log_info() { echo -e "${BLUE}ℹ️ $1${NC}"; }
-log_success() { echo -e "${GREEN}✅ $1${NC}"; }
-log_warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
-log_error() { echo -e "${RED}❌ $1${NC}"; }
-
-# Verificar y clonar repositorio si es necesario
-setup_environment() {
-    if [ ! -d "$CONFIG_DIR" ]; then
-        log_info "Clonando repositorio..."
-        git clone https://github.com/hallochrrr/github-tunnel "$CONFIG_DIR"
-        if [ $? -eq 0 ]; then
-            log_success "Repositorio clonado"
-        else
-            log_error "Error al clonar repositorio"
-            exit 1
-        fi
-    fi
-    
-    cd "$CONFIG_DIR" || {
-        log_error "No se pudo acceder al directorio"
-        exit 1
-    }
-    
-    # Actualizar repositorio
-    log_info "Actualizando repositorio..."
-    git pull origin main
-}
-
-# Verificar dependencias
-check_dependencies() {
-    log_info "Verificando dependencias..."
-    
-    local missing_deps=()
-    
-    # Verificar comandos básicos
-    for cmd in curl git python; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        log_warning "Dependencias faltantes: ${missing_deps[*]}"
-        log_info "Instalando con: pkg install ${missing_deps[*]}"
-        pkg install -y "${missing_deps[@]}"
-    fi
-    
-    # Verificar Python requests
-    if ! python -c "import requests" 2>/dev/null; then
-        log_info "Instalando requests para Python..."
-        pip install requests
-    fi
-    
-    log_success "Dependencias verificadas"
-}
-
-# Probar conexión al worker
-test_connection() {
-    log_info "Probando conexión con Worker..."
-    local worker_url="https://dns-tunnel.hallochrrr.workers.dev/status"
-    
-    response=$(curl -s -w "%{http_code}" "$worker_url")
-    http_code="${response: -3}"
-    content="${response%???}"
-    
-    if [ "$http_code" -eq 200 ]; then
-        log_success "Conexión exitosa"
-        echo "Respuesta: $content"
-        return 0
-    else
-        log_error "Error de conexión - HTTP $http_code"
-        return 1
-    fi
-}
-
-# Ejecutar cliente Python
-run_python_client() {
-    log_info "Ejecutando cliente Python avanzado..."
-    cd "$SCRIPT_DIR" || return 1
-    
-    if [ -f "advanced_client.py" ]; then
-        python advanced_client.py
-    else
-        log_error "Cliente Python no encontrado"
-        return 1
-    fi
-}
-
-# Instalar servicio (futura implementación)
-install_service() {
-    log_info "Instalando servicio automático..."
-    # Esto se implementará en fases futuras
-    log_warning "Instalación de servicio pendiente para Fase 3"
-}
-
-# Menú principal mejorado
-show_menu() {
-    echo ""
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${GREEN}   🌐 DNS TUNNEL TERMUX${NC}"
-    echo -e "${BLUE}=================================${NC}"
-    echo "1) Probar conexión básica"
-    echo "2) Ejecutar cliente avanzado (Python)"
-    echo "3) Verificar dependencias"
-    echo "4) Actualizar repositorio"
-    echo "5) Instalar servicio automático"
-    echo "6) Estado del sistema"
-    echo "7) Salir"
-    echo -e "${BLUE}=================================${NC}"
-    echo ""
-    read -p "Selecciona opción: " choice
-    
-    case $choice in
-        1) test_connection ;;
-        2) run_python_client ;;
-        3) check_dependencies ;;
-        4) setup_environment ;;
-        5) install_service ;;
-        6) system_status ;;
-        7) log_success "👋 ¡Hasta luego!"; exit 0 ;;
-        *) log_error "Opción inválida" ;;
-    esac
-}
-
-# Mostrar estado del sistema
-system_status() {
-    log_info "Estado del sistema:"
-    echo "• Directorio: $CONFIG_DIR"
-    echo "• Python: $(python --version 2>/dev/null || echo 'No encontrado')"
-    echo "• curl: $(curl --version 2>/dev/null | head -n1 || echo 'No encontrado')"
-    echo "• git: $(git --version 2>/dev/null || echo 'No encontrado')"
-    echo "• Worker: https://dns-tunnel.hallochrrr.workers.dev"
-}
-
-# Inicialización principal
-main() {
-    log_success "DNS Tunnel Client v2.0"
-    
-    # Configurar entorno
-    setup_environment
-    check_dependencies
-    
-    # Probar conexión inicial
-    if test_connection; then
-        log_success "Sistema listo para usar"
-    else
-        log_warning "Problemas de conexión detectados"
-    fi
-    
-    # Menú principal
-    while true; do
-        show_menu
-        echo ""
-        read -p "Presiona Enter para continuar..." dummy
-    done
-}
-
-# Ejecutar
-main "$@"
+if __name__ == "__main__":
+    main()
