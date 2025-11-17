@@ -1,195 +1,281 @@
-// Worker para etecsa.tk - PEGA ESTO EN CLOUDFLARE
-addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request) {
-    try {
-        const url = new URL(request.url);
-        const name = url.searchParams.get('name');
-        const type = url.searchParams.get('type') || 'TXT';
-        
-        console.log(`[WORKER] Consulta: ${name}, tipo: ${type}`);
-        
-        // Si no hay parámetros, mostrar información
-        if (!name) {
-            return new Response('DNS Tunnel Worker - ACTIVO\n\nUsar: ?name=DOMINIO&type=TIPO\nEjemplo: ?name=google.com&type=TXT', {
-                headers: { 'Content-Type': 'text/plain' }
-            });
-        }
-        
-        // Prevenir bucles - no procesar nuestro propio dominio
-        if (name.includes('etecsa.tk')) {
-            console.log('[WORKER] Prevención de bucle activada');
-            return createDNSResponse([], 3);
-        }
-        
-        // Manejar diferentes tipos de consultas
-        if (type === 'TXT') {
-            return await handleTXTQuery(name);
-        } else if (type === 'A') {
-            return await handleAQuery(name);
-        } else {
-            return createDNSResponse([], 0);
-        }
-        
-    } catch (error) {
-        console.error('[WORKER] Error general:', error);
-        return createDNSResponse([], 2);
-    }
-}
-
-async function handleTXTQuery(name) {
-    try {
-        console.log('[WORKER] Procesando TXT query:', name);
-        
-        // Verificar si es una petición de datos (debe tener .data. en el nombre)
-        if (!name.includes('.data.')) {
-            console.log('[WORKER] No es petición de datos, retornando vacío');
-            return createDNSResponse([], 0);
-        }
-        
-        // Extraer datos hex del subdominio
-        const hexData = name.split('.')[0];
-        
-        // Validar formato hex
-        if (!/^[0-9a-fA-F]+$/.test(hexData)) {
-            console.log('[WORKER] Datos hex inválidos');
-            return createDNSResponse([], 3);
-        }
-        
-        console.log('[WORKER] Datos hex recibidos:', hexData.substring(0, 50) + '...');
-        
-        // Decodificar la petición
-        const requestBytes = hexToBytes(hexData);
-        const requestText = new TextDecoder().decode(requestBytes);
-        const requestData = JSON.parse(requestText);
-        
-        console.log('[WORKER] Petición decodificada:', {
-            method: requestData.method,
-            url: requestData.url,
-            hasBody: !!requestData.body
-        });
-        
-        // Validar URL para prevenir bucles
-        try {
-            const targetUrl = new URL(requestData.url);
-            if (targetUrl.hostname.includes('etecsa.tk')) {
-                throw new Error('Bucle detectado: no se puede hacer petición al propio worker');
-            }
-        } catch (urlError) {
-            throw new Error('URL inválida: ' + requestData.url);
-        }
-        
-        // Realizar petición HTTP con timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
-        const fetchOptions = {
-            method: requestData.method || 'GET',
-            headers: requestData.headers || {},
-            signal: controller.signal
-        };
-        
-        // Agregar body si existe
-        if (requestData.body) {
-            fetchOptions.body = hexToBytes(requestData.body);
-        }
-        
-        const response = await fetch(requestData.url, fetchOptions);
-        clearTimeout(timeoutId);
-        
-        // Preparar respuesta
-        const responseData = {
-            status: response.status,
-            headers: Object.fromEntries(response.headers.entries()),
-            body: bytesToHex(await response.arrayBuffer())
-        };
-        
-        console.log('[WORKER] Respuesta preparada, status:', response.status);
-        
-        // Codificar y fragmentar respuesta
-        const responseJson = JSON.stringify(responseData);
-        const responseHex = bytesToHex(new TextEncoder().encode(responseJson));
-        const chunks = splitChunks(responseHex, 200);
-        
-        console.log('[WORKER] Enviando', chunks.length, 'chunks');
-        return createDNSResponse(chunks, 0);
-        
-    } catch (error) {
-        console.error('[WORKER] Error en TXT query:', error);
-        
-        // Enviar error al cliente
-        const errorData = {
-            error: error.message,
-            status: 500
-        };
-        const errorHex = bytesToHex(new TextEncoder().encode(JSON.stringify(errorData)));
-        const chunks = splitChunks(errorHex, 200);
-        return createDNSResponse(chunks, 0);
-    }
-}
-
-async function handleAQuery(name) {
-    // Para consultas A, devolver IPs dummy
-    const answers = [
-        {
-            name: name,
-            type: 1,
-            TTL: 300,
-            data: '1.1.1.1'
-        }
-    ];
+// workers/dns-tunnel-worker.js
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
     
-    return new Response(JSON.stringify({
-        Status: 0,
-        Answer: answers
-    }), {
-        headers: { 
-            'Content-Type': 'application/dns-json',
-            'Cache-Control': 'no-cache'
-        }
+    // Evitar bucles infinitos - NO hacer peticiones a nuestro propio dominio
+    if (url.hostname.includes('etecsa.tk') || url.hostname.includes('workers.dev')) {
+      return new Response('Blocked self-request', { status: 403 });
+    }
+
+    // Solo manejar consultas DNS-over-HTTPS
+    if (url.pathname === '/dns-query') {
+      return await handleDnsQuery(request);
+    }
+
+    // Endpoint de salud
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({
+        status: 'ok',
+        timestamp: Date.now(),
+        worker: 'dns-tunnel'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    return new Response('DNS Tunnel Worker OK', { status: 200 });
+  }
+};
+
+async function handleDnsQuery(request) {
+  try {
+    const url = new URL(request.url);
+    const name = url.searchParams.get('name');
+    const type = url.searchParams.get('type') || 'TXT';
+
+    if (!name) {
+      return jsonResponse({ Status: 2, Comment: 'Missing name parameter' });
+    }
+
+    // Prevenir bucles - no procesar nuestro propio dominio
+    if (name.includes('etecsa.tk') || name.includes('workers.dev')) {
+      return jsonResponse({ 
+        Status: 0, 
+        Answer: [{ 
+          name: name, 
+          type: 16, 
+          TTL: 300, 
+          data: `"SELF_BLOCK:${btoa('Blocked self-request')}"` 
+        }] 
+      });
+    }
+
+    // Decodificar peticiones HTTP desde DNS
+    if (name.startsWith('http.')) {
+      return await handleHttpRequest(name);
+    }
+
+    // Decodificar peticiones HTTPS desde DNS  
+    if (name.startsWith('https.')) {
+      return await handleHttpsRequest(name);
+    }
+
+    // Consulta DNS normal
+    return await handleNormalDns(name, type);
+
+  } catch (error) {
+    console.error('Error in DNS query:', error);
+    return jsonResponse({ 
+      Status: 2, 
+      Comment: `Error: ${error.message}` 
     });
+  }
 }
 
-function createDNSResponse(chunks, status) {
-    const answers = chunks.map(chunk => ({
-        name: 'etecsa.tk',
-        type: 16,
-        TTL: 60,
-        data: `"${chunk}"`
-    }));
+async function handleHttpRequest(encodedName) {
+  try {
+    // Formato: http.{base64url}.{random}.etecsa.tk
+    const parts = encodedName.split('.');
+    if (parts.length < 4) {
+      return jsonResponse({ Status: 2, Comment: 'Invalid HTTP format' });
+    }
+
+    const base64Url = parts[1];
+    const decodedUrl = atob(base64Url.replace(/-/g, '+').replace(/_/g, '/'));
     
-    return new Response(JSON.stringify({
-        Status: status,
-        Answer: answers
-    }), {
-        headers: { 
-            'Content-Type': 'application/dns-json',
-            'Cache-Control': 'no-cache, no-store'
-        }
+    // Validar URL para prevenir SSRF
+    if (!isValidUrl(decodedUrl)) {
+      return jsonResponse({ Status: 2, Comment: 'Invalid URL' });
+    }
+
+    // Hacer petición HTTP real
+    const response = await fetch(decodedUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'DNS-Tunnel-Client/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      },
+      timeout: 10000
     });
+
+    // Codificar respuesta en formato binario compacto
+    const responseData = await response.arrayBuffer();
+    const status = response.status;
+    const headers = Object.fromEntries(response.headers.entries());
+    
+    // Crear payload binario compacto
+    const payload = createBinaryPayload(status, headers, responseData);
+    
+    // Dividir en chunks para DNS
+    const chunks = splitToChunks(payload, 200); // 200 bytes por chunk
+    
+    return createDnsResponse(chunks);
+
+  } catch (error) {
+    console.error('HTTP request failed:', error);
+    return jsonResponse({ 
+      Status: 2, 
+      Answer: [{ 
+        name: encodedName, 
+        type: 16, 
+        TTL: 60, 
+        data: `"ERROR:${btoa(error.message)}"` 
+      }] 
+    });
+  }
+}
+
+async function handleHttpsRequest(encodedName) {
+  try {
+    // Formato: https.{base64url}.{random}.etecsa.tk
+    const parts = encodedName.split('.');
+    if (parts.length < 4) {
+      return jsonResponse({ Status: 2, Comment: 'Invalid HTTPS format' });
+    }
+
+    const base64Url = parts[1];
+    let decodedUrl = atob(base64Url.replace(/-/g, '+').replace(/_/g, '/'));
+    
+    // Asegurar que sea HTTPS
+    if (!decodedUrl.startsWith('https://')) {
+      decodedUrl = 'https://' + decodedUrl;
+    }
+
+    if (!isValidUrl(decodedUrl)) {
+      return jsonResponse({ Status: 2, Comment: 'Invalid HTTPS URL' });
+    }
+
+    // Petición HTTPS con timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(decodedUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'DNS-Tunnel-Client/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    const responseData = await response.arrayBuffer();
+    const status = response.status;
+    const headers = Object.fromEntries(response.headers.entries());
+    
+    const payload = createBinaryPayload(status, headers, responseData);
+    const chunks = splitToChunks(payload, 200);
+    
+    return createDnsResponse(chunks);
+
+  } catch (error) {
+    console.error('HTTPS request failed:', error);
+    return jsonResponse({ 
+      Status: 2, 
+      Answer: [{ 
+        name: encodedName, 
+        type: 16, 
+        TTL: 60, 
+        data: `"HTTPS_ERROR:${btoa(error.message)}"` 
+      }] 
+    });
+  }
+}
+
+async function handleNormalDns(name, type) {
+  // Para consultas DNS normales, usar Cloudflare DNS
+  const cfResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${name}&type=${type}`, {
+    headers: { 'Accept': 'application/dns-json' }
+  });
+  
+  if (cfResponse.ok) {
+    const data = await cfResponse.json();
+    return jsonResponse(data);
+  }
+  
+  return jsonResponse({ Status: 2, Comment: 'DNS query failed' });
 }
 
 // Utilidades
-function splitChunks(str, size) {
-    const chunks = [];
-    for (let i = 0; i < str.length; i += size) {
-        chunks.push(str.substring(i, i + size));
+function isValidUrl(string) {
+  try {
+    const url = new URL(string);
+    // Bloquear localhost y redes privadas
+    if (url.hostname === 'localhost' || 
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '::1' ||
+        url.hostname.endsWith('.local') ||
+        url.hostname.endsWith('.internal')) {
+      return false;
     }
-    return chunks;
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
 }
 
-function bytesToHex(bytes) {
-    return Array.from(bytes)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+function createBinaryPayload(status, headers, data) {
+  const statusBuffer = new Uint16Array([status]);
+  const headersBuffer = new TextEncoder().encode(JSON.stringify(headers));
+  const headersLength = new Uint16Array([headersBuffer.length]);
+  
+  // Concatenar todo: [status(2)][headers_length(2)][headers][data]
+  const totalLength = 4 + headersBuffer.length + data.byteLength;
+  const payload = new Uint8Array(totalLength);
+  
+  payload.set(new Uint8Array(statusBuffer.buffer), 0);
+  payload.set(new Uint8Array(headersLength.buffer), 2);
+  payload.set(headersBuffer, 4);
+  payload.set(new Uint8Array(data), 4 + headersBuffer.length);
+  
+  return payload;
 }
 
-function hexToBytes(hex) {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-        bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+function splitToChunks(data, chunkSize) {
+  const chunks = [];
+  for (let i = 0; i < data.length; i += chunkSize) {
+    chunks.push(data.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function createDnsResponse(chunks) {
+  const answers = chunks.map((chunk, index) => {
+    // Convertir a base64 para TXT (más eficiente que texto plano)
+    const base64Data = btoa(String.fromCharCode(...chunk))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+    
+    return {
+      name: `chunk${index}.etecsa.tk`,
+      type: 16,
+      TTL: 300,
+      data: `"${base64Data}"`
+    };
+  });
+  
+  // Añadir metadata como primer chunk
+  answers.unshift({
+    name: "meta.etecsa.tk",
+    type: 16,
+    TTL: 300,
+    data: `"CHUNKS:${chunks.length}"`
+  });
+  
+  return jsonResponse({
+    Status: 0,
+    Answer: answers
+  });
+}
+
+function jsonResponse(data) {
+  return new Response(JSON.stringify(data), {
+    headers: { 
+      'Content-Type': 'application/dns-json',
+      'Access-Control-Allow-Origin': '*'
     }
-    return bytes;
+  });
 }
